@@ -20,6 +20,7 @@ u Pojmovniku na dnu. Jezik je crnogorski (ijekavica), valuta EUR, format brojeva
 | Grafikoni | Recharts 2.15.4 |
 | Hosting | Vercel, tim `Radule`, projekat `orijent-dashboard`, region `fra1` |
 | Produkcija | https://orijent-dashboard-radule.vercel.app |
+| Repo | https://github.com/radulovicigor/orijentdashboard (grana `main`) |
 
 `export const revalidate = 900` na `app/page.tsx` — stranica se keširа 15 minuta.
 
@@ -33,26 +34,41 @@ ne može uvijek da dohvati fontove i pada.
 
 Ovo je najvažniji dio za razumjeti — nije standardna postavka.
 
-### Meta reklame → preko Supabase, ne direktno
+### Meta reklame → uživo sa Graph API-ja
 
-Klijent **nema** Meta API token (nije uspjela verifikacija Meta naloga). Zato:
+Klijent je verifikovao Meta nalog i napravio System User token (od 20.9.2026).
+`lib/meta.ts` zove Graph API direktno, bez posrednika:
 
-1. Zakazani zadatak jednom dnevno u 06:00 po Podgorici čita Meta Ads podatke
-   preko Meta Ads MCP konektora (ne preko Graph API-ja).
-2. Upisuje ih u Supabase, projekat `czdtlmimtilvvtsytqpx`:
-   - `public.meta_daily` — jedan red po (kind, date, entity_id);
-     `kind` je `account` | `campaign` | `ad`. PK je (kind, date, entity_id).
-   - `public.meta_snapshot` — `key` + `data jsonb`; drži breakdown-ove
-     (starost/pol, platforme, pozicije, gradovi) i `reach` za konkretan period.
-3. `lib/meta.ts` čita iz Supabase preko PostgREST-a, sa headerom
-   `apikey: <publishable key>`. RLS je uključen, anon ima samo SELECT.
+- `META_ACCESS_TOKEN` — System User token, scope `ads_read`, **bez isteka**
+  (`expires_at: 0`, `data_access_expires_at: 0` — provjereno preko `/debug_token`).
+- `META_AD_ACCOUNT_ID` = `976499834476142`, `META_API_VERSION` = `v23.0`.
+- Dnevni redovi (`level=account|campaign|ad`, `time_increment=1`) za spend/
+  impresije/klikove/akcije (link click, landing page view, add to cart,
+  initiate checkout, purchase) — sabiraju se po danu, isto kao ranije.
+- `reach`/`frequency` se čitaju **posebnim pozivom bez `time_increment`** za
+  tačno traženi period — Graph API vraća pravi jedinstveni doseg za bilo koji
+  opseg, pa je `reachKnown` sad uvijek `true` (nema više "poklapanja sa
+  snimkom" — to je bio Supabase problem, direktan API ga nema).
+- Breakdown-ovi (starost/pol, platforma+pozicija, grad) se čitaju uživo preko
+  `breakdowns=` parametra za tačno izabrani period — `breakdownPeriod` je
+  uvijek isti kao `since`/`until` iz filtera, ne kasni za njim.
+- `objective`/`status`/`daily_budget` dolaze sa `/campaigns` i `/ads`
+  endpoint-a (nisu dio insights-a). **`daily_budget` je u centima** — dijeli
+  se sa 100.
+- "Rezultati" po kampanji: `OBJECTIVE_RESULT` mapira cilj kampanje (npr.
+  `OUTCOME_SALES`) na odgovarajuću metriku (purchases/landingPageViews/
+  linkClicks). Za `OUTCOME_AWARENESS`/`BRAND_AWARENESS`/`REACH` ostaje `—`
+  (dnevni doseg se i dalje ne može sabirati kroz kampanju na ovaj način).
+- **Pažnja na `previousRange()`**: kad prethodnog perioda nema, vraća
+  sentinel `"2000-01-01"`. Taj datum se **nikad** ne šalje Meti (Graph API
+  baca grešku #3018 — opseg stariji od ~37 mjeseci); `fetchSince` u
+  `lib/meta.ts` to eksplicitno provjerava protiv `MIN_DATE`.
 
-Posljedica: `lib/meta.ts` **nikad ne zove Metu.** Ako treba svježiji podatak,
-mijenja se sync, ne app.
-
-`reach` se ne može sabirati po danima (isti ljudi se ponavljaju). Zato se uzima
-iz snapshot-a samo kad se `since`/`until` tačno poklapaju sa snimljenim periodom —
-`m.reachKnown` govori da li smije da se prikaže. Ako ne, prikazuje se `—`.
+Supabase (`czdtlmimtilvvtsytqpx`, tabele `meta_daily`/`meta_snapshot`) i
+zakazani dnevni sync preko Meta Ads MCP konektora **više se ne koriste** za
+ovaj izvještaj — to je bio privremeni zaobilazni put dok klijent nije imao
+token. Sync zadatak se može ugasiti (provjeri kod korisnika da li postoji
+i da li je vezan za nešto drugo prije brisanja).
 
 ### Shopify → uživo
 
@@ -125,7 +141,7 @@ components/
   Charts.tsx          RevenueSpendChart, TrafficChart, AgeGenderChart, OrdersChart
 lib/
   range.ts            opsezi datuma + MIN_DATE
-  meta.ts             čitanje iz Supabase + labele (objective, rezultat, platforma, grad)
+  meta.ts             Graph API uživo + labele (objective, rezultat, platforma, grad)
   shopify.ts          Admin GraphQL, agregacije po danu/proizvodu/izvoru
   data.ts             loadDashboard() — spaja oba izvora
   format.ts           eur, num, pct, dec, roas, safeDiv
@@ -148,8 +164,11 @@ public/
 - **Meta piksel na orijent.me ne bilježi sve kupovine.** Zato `pixelHasSales`
   u `app/page.tsx` uslovno sakriva Meta-ROAS i korake ljevka koji zavise od piksela.
   Mjerodavna prodaja je Shopify. Ne prikazivati Meta ROAS kao glavnu metriku.
-- **Vercel deploy preko MCP-a traži cijelo stablo fajlova u svakom pozivu** —
-  nema inkrementalnog deploya. Ako deployuješ tako, pošalji sve fajlove.
+- **Deploy ide preko GitHub-a** (`radulovicigor/orijentdashboard`, grana `main`).
+  `git push`, pa `create_deployment` sa `gitSource` (org/repo/ref/sha) —
+  Vercel sam povuče repo, brzo je (~40s build). Ne vraćati se na ručno slanje
+  fajlova kroz MCP (`files` sa base64) — radi, ali je sporo i lomljivo za
+  ovoliko fajlova; probano i napušteno.
 - **Deployment Protection**: `ssoProtection` je ograničen na `preview`, da bi
   produkcijski URL bio javan (lozinka u aplikaciji je ta koja čuva pristup).
 - Cormorant Garamond ima prave glifove za č/ć/š/ž, ali su akcenti visoko
@@ -169,15 +188,18 @@ npm run dev
 Demo mod ne traži nijedan ključ i daje pune podatke u svim sekcijama, uključujući
 one koje bi na produkciji bile prazne.
 
-Za deploy: povezati folder sa Vercel projektom (`vercel link`) ili gurnuti na
-GitHub i zakačiti repo. Environment varijable su već postavljene na Vercelu —
-ne treba ih ponovo unositi, samo ne brisati.
+Za deploy: `git push` na `main` (repo je `radulovicigor/orijentdashboard`).
+Environment varijable su već postavljene na Vercelu — ne treba ih ponovo
+unositi, samo ne brisati.
 
 ---
 
 ## Šta bi sljedeće moglo
 
-- Ako klijent ikad verifikuje Meta nalog i napravi System User token
-  (`ads_read`, `read_insights`, bez isteka), `lib/meta.ts` se može prebaciti
-  na direktno čitanje sa Graph API-ja i Supabase ispada iz priče.
-- Piksel na orijent.me treba popraviti da šalje `Purchase` i `AddToCart`.
+- Piksel na orijent.me djelimično radi (šalje ViewContent, AddToCart i
+  Purchase se povremeno vide — provjeri da li je stabilno prije nego što
+  `pixelHasSales` postane trajno pouzdan signal).
+- Ugasiti stari dnevni sync zadatak (Meta Ads MCP → Supabase) ako i dalje
+  postoji — više ništa ne čita iz `meta_daily`/`meta_snapshot`.
+- Trajno povezati Vercel projekat na GitHub repo (Project Settings → Git) da
+  svaki `git push` sam pokrene deploy, bez ručnog `create_deployment` poziva.

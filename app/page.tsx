@@ -60,8 +60,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
     const [, mm, dd] = x.split("-");
     return `${dd}.${mm}.`;
   };
-  const fmtDT = (x: string) =>
-    new Intl.DateTimeFormat("sr-Latn-ME", { timeZone: "Europe/Podgorica", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(x));
   const q = (r: string) => `/?r=${r}${forceDemo ? "&demo=1" : ""}`;
 
   return (
@@ -77,7 +75,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
           </div>
           <div className="meta-line">
             <span>Prodaja: uživo</span>
-            <span className="dot-sep">Meta reklame: {m?.lastSync ? `ažurirano ${fmtDT(m.lastSync)}` : "—"}</span>
+            <span className="dot-sep">Meta reklame: uživo</span>
             {process.env.DASHBOARD_PASSWORD ? (
               <span className="dot-sep">
                 <a href="/api/logout">Odjava</a>
@@ -405,7 +403,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
 
       <footer>
         <span>Izvori: Meta Ads · Shopify · prikaz od {fmtD(MIN_DATE)}</span>
-        <span>Pripremio Vuk Milošević</span>
       </footer>
     </main>
   );

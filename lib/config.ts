@@ -1,3 +1,4 @@
-// Supabase project that stores the Meta Ads data (synced daily). Set in Vercel environment variables.
-export const SUPABASE_URL = process.env.SUPABASE_URL || "";
-export const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+// Meta Graph API (System User token, ads_read, bez isteka). Set u Vercel environment varijablama.
+export const META_ACCESS_TOKEN = (process.env.META_ACCESS_TOKEN || "").trim();
+export const META_AD_ACCOUNT_ID = (process.env.META_AD_ACCOUNT_ID || "").trim();
+export const META_API_VERSION = (process.env.META_API_VERSION || "v23.0").trim();

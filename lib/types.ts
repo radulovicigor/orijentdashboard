@@ -16,6 +16,14 @@ export interface MetaDaily extends MetaTotals {
   date: string;
 }
 
+export interface MetaAd extends MetaTotals {
+  id: string;
+  name: string;
+  campaignName: string;
+  status: string;
+  thumbnail: string | null;
+}
+
 export interface MetaCampaign extends MetaTotals {
   id: string;
   name: string;
@@ -26,14 +34,8 @@ export interface MetaCampaign extends MetaTotals {
   dailyBudget: number | null;
   results: number | null;
   resultLabel: string;
-}
-
-export interface MetaAd extends MetaTotals {
-  id: string;
-  name: string;
-  campaignName: string;
-  status: string;
-  thumbnail: string | null;
+  daily: { date: string; spend: number }[];
+  ads: MetaAd[];
 }
 
 export interface BreakdownRow {

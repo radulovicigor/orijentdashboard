@@ -3,7 +3,7 @@ import { loadDashboard } from "@/lib/data";
 import { MIN_DATE, RANGES, resolveRange } from "@/lib/range";
 import { dec, eur, eur0, num, pct, roas, safeDiv } from "@/lib/format";
 import { Bars, Metric, Panel, SectionHead, Status } from "@/components/ui";
-import { AgeGenderChart, OrdersChart, RevenueSpendChart, TrafficChart } from "@/components/Charts";
+import { AgeGenderChart, CampaignSpendChart, OrdersChart, RevenueSpendChart, TrafficChart } from "@/components/Charts";
 
 export const revalidate = 900;
 
@@ -254,6 +254,47 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
               </table>
             </div>
           </div>
+
+          {m.campaigns.length > 0 && (
+            <div className="panel" style={{ marginTop: 14 }}>
+              <div className="panel-head">
+                <h3>Detalji po kampanji</h3>
+                <span className="note">klikni za više</span>
+              </div>
+              <div className="camp-list">
+                {m.campaigns.map((c) => (
+                  <details className="camp" key={c.id}>
+                    <summary>
+                      <span className="camp-name">{c.name}</span>
+                      <span className="camp-sub">
+                        <Status s={c.status} />
+                        <span className="sep">·</span>
+                        <span>{c.objective}</span>
+                      </span>
+                      <span className="camp-spend num">{eur(c.spend)}</span>
+                    </summary>
+                    <div className="camp-body">
+                      <div className="camp-chart">
+                        <div className="chart-label spend">Uloženo po danu</div>
+                        <CampaignSpendChart data={c.daily} />
+                      </div>
+                      <div className="camp-ads">
+                        <div className="bars-title" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
+                          Reklame u kampanji
+                        </div>
+                        <Bars
+                          rows={c.ads.map((a) => ({ ...a, label: a.name }))}
+                          value={(r) => r.spend}
+                          format={eur}
+                          sub={(r) => `${num(r.impressions)} impresija · ${pct(safeDiv(r.linkClicks * 100, r.impressions))} CTR`}
+                        />
+                      </div>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          )}
 
           {m.ads.length > 0 && (
             <div className="panel" style={{ marginTop: 14 }}>

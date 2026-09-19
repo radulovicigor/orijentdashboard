@@ -1,4 +1,4 @@
-import type { MetaData, MetaTotals, ShopifyData } from "./types";
+import type { MetaAd, MetaData, MetaTotals, ShopifyData } from "./types";
 import { eachDay } from "./range";
 
 // Deterministic pseudo-random so the demo looks the same on every load
@@ -78,7 +78,21 @@ export function demoMeta(since: string, until: string): MetaData {
       frequency: 1.3 + i * 0.4,
     };
     const results = i === 0 ? t.purchases : i === 1 ? t.landingPageViews : t.reach;
-    return { id: String(i), name, firstDate: since, lastDate: until, status: "ACTIVE", objective: objectives[i], dailyBudget: [8, 5, 4][i], results, resultLabel: ["Kupovine", "Pregledi stranice", "Doseg"][i], ...t };
+    const dailySpend = days.map((date) => ({ date, spend: (t.spend / days.length) * (0.5 + r() * 1.2) }));
+    return {
+      id: String(i),
+      name,
+      firstDate: since,
+      lastDate: until,
+      status: "ACTIVE",
+      objective: objectives[i],
+      dailyBudget: [8, 5, 4][i],
+      results,
+      resultLabel: ["Kupovine", "Pregledi stranice", "Doseg"][i],
+      daily: dailySpend,
+      ads: [] as MetaAd[],
+      ...t,
+    };
   });
 
   const adNames = ["Katalog — Collection Story", "Katalog — Carousel", "Kviz — Koncept A (bočica)", "Kviz — Koncept B (kviz)", "Awareness — Reel 1", "Awareness — Dupe format"];
@@ -103,6 +117,8 @@ export function demoMeta(since: string, until: string): MetaData {
       frequency: null,
     };
   });
+
+  for (const c of campaigns) c.ads = ads.filter((a) => a.campaignName === c.name).sort((x, y) => y.spend - x.spend);
 
   const ages = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
   const ageW = [0.18, 0.34, 0.24, 0.13, 0.07, 0.04];

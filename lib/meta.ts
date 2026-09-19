@@ -243,6 +243,20 @@ function groupLevel(rows: InsightRow[], since: string, until: string) {
   return [...m.entries()].filter(([, g]) => g.t.spend > 0 || g.t.impressions > 0);
 }
 
+function dailySpendByEntity(rows: InsightRow[], since: string, until: string): Map<string, { date: string; spend: number }[]> {
+  const days = eachDay(since, until);
+  const out = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    if (!inRange(r.date, since, until)) continue;
+    const m = out.get(r.entityId) ?? new Map<string, number>();
+    m.set(r.date, (m.get(r.date) ?? 0) + r.spend);
+    out.set(r.entityId, m);
+  }
+  const result = new Map<string, { date: string; spend: number }[]>();
+  for (const [id, m] of out) result.set(id, days.map((date) => ({ date, spend: m.get(date) ?? 0 })));
+  return result;
+}
+
 export async function getMetaData(key: RangeKey, since: string, until: string, prev: { since: string; until: string }): Promise<MetaData> {
   if (!META_ACCESS_TOKEN || !META_AD_ACCOUNT_ID) {
     throw new Error("Meta pristup nije podešen (META_ACCESS_TOKEN / META_AD_ACCOUNT_ID u Vercelu).");
@@ -278,6 +292,21 @@ export async function getMetaData(key: RangeKey, since: string, until: string, p
   totals.reach = reachInfo.reach;
   totals.frequency = reachInfo.reach ? totals.impressions / reachInfo.reach : reachInfo.frequency;
 
+  const campaignDaily = dailySpendByEntity(campaignRows, since, until);
+
+  const allAds: MetaAd[] = groupLevel(adRows, since, until)
+    .map(([id, g]) => ({
+      id,
+      name: g.name,
+      campaignName: g.parentName ?? "",
+      status: adMeta.get(id)?.status ?? "UNKNOWN",
+      thumbnail: null,
+      ...g.t,
+    }))
+    .sort((a, b) => b.spend - a.spend);
+  const adsByCampaign = new Map<string, MetaAd[]>();
+  for (const a of allAds) adsByCampaign.set(a.campaignName, [...(adsByCampaign.get(a.campaignName) ?? []), a]);
+
   const campaigns: MetaCampaign[] = groupLevel(campaignRows, since, until)
     .map(([id, g]) => {
       const meta = campaignMeta.get(id);
@@ -301,23 +330,15 @@ export async function getMetaData(key: RangeKey, since: string, until: string, p
         dailyBudget: meta?.dailyBudget ?? null,
         results,
         resultLabel,
+        daily: campaignDaily.get(id) ?? [],
+        ads: adsByCampaign.get(g.name) ?? [],
         ...g.t,
       };
     })
     // hronološki: kampanja koja je prva krenula ide prva
     .sort((a, b) => (a.firstDate === b.firstDate ? a.lastDate.localeCompare(b.lastDate) : a.firstDate.localeCompare(b.firstDate)));
 
-  const ads: MetaAd[] = groupLevel(adRows, since, until)
-    .map(([id, g]) => ({
-      id,
-      name: g.name,
-      campaignName: g.parentName ?? "",
-      status: adMeta.get(id)?.status ?? "UNKNOWN",
-      thumbnail: null,
-      ...g.t,
-    }))
-    .sort((a, b) => b.spend - a.spend)
-    .slice(0, 12);
+  const ads = allAds.slice(0, 12);
 
   const ageMap = new Map<string, { age: string; male: number; female: number; unknown: number; spendMale: number; spendFemale: number }>();
   for (const r of ageGenderRaw) {

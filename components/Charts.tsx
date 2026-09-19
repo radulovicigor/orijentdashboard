@@ -139,6 +139,22 @@ export function AgeGenderChart({ data }: { data: { age: string; female: number; 
   );
 }
 
+export function CampaignSpendChart({ data }: { data: { date: string; spend: number }[] }) {
+  return (
+    <div style={{ width: "100%", height: 120 }}>
+      <ResponsiveContainer>
+        <BarChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID} vertical={false} />
+          <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={26} {...axis} />
+          <YAxis tickFormatter={fmtEur} width={60} {...axis} />
+          <Tooltip {...tip} labelFormatter={(l) => shortDate(String(l))} formatter={(v: number) => [fmtEur(v), "Uloženo"]} />
+          <Bar dataKey="spend" name="Uloženo" fill={S2} radius={[3, 3, 0, 0]} maxBarSize={12} animationDuration={600} animationEasing="ease-out" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function OrdersChart({ data }: { data: { date: string; orders: number }[] }) {
   return (
     <div style={{ width: "100%", height: 196 }}>

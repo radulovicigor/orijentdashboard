@@ -1,0 +1,8 @@
+node_modules
+.next
+.env*
+!.env.example
+dashboard-kljucevi.txt
+vercel-orijent-dashboard-2.env
+tsconfig.tsbuildinfo
+.claude/

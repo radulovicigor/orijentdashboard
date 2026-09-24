@@ -81,7 +81,8 @@ export interface ShopifyData {
   returningCustomers: number;
   metaOrders: number;
   metaRevenue: number;
-  daily: { date: string; revenue: number; orders: number }[];
+  daily: { date: string; revenue: number; orders: number; newCustomers: number; returningCustomers: number }[];
+  hourly: { hour: number; orders: number; revenue: number }[];
   topProducts: { title: string; units: number; revenue: number }[];
   sources: { label: string; orders: number; revenue: number }[];
   truncated: boolean;

@@ -106,9 +106,9 @@ export function Status({ s }: { s: string }) {
   );
 }
 
-export function Panel({ title, note, children }: { title?: string; note?: string; children: React.ReactNode }) {
+export function Panel({ title, note, style, children }: { title?: string; note?: string; style?: React.CSSProperties; children: React.ReactNode }) {
   return (
-    <div className="panel">
+    <div className="panel" style={style}>
       {(title || note) && (
         <div className="panel-head">
           {title && <h3>{title}</h3>}
@@ -116,6 +116,40 @@ export function Panel({ title, note, children }: { title?: string; note?: string
         </div>
       )}
       <div className="panel-body">{children}</div>
+    </div>
+  );
+}
+
+export function CalendarHeatmap({ data, format }: { data: { date: string; value: number }[]; format: (v: number) => string }) {
+  if (!data.length) return null;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const first = new Date(data[0].date + "T00:00:00Z");
+  const firstDow = (first.getUTCDay() + 6) % 7; // 0=ponedjeljak .. 6=nedjelja
+  const cells: ({ date: string; value: number } | null)[] = [...Array(firstDow).fill(null), ...data];
+  const weeks: ({ date: string; value: number } | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const dowLabels = ["P", "U", "S", "Č", "P", "S", "N"];
+  const fmtD = (x: string) => x.split("-").reverse().join(".") + ".";
+  return (
+    <div className="heatmap">
+      <div className="heatmap-dow">
+        {dowLabels.map((d, i) => (
+          <span key={i}>{d}</span>
+        ))}
+      </div>
+      <div className="heatmap-grid">
+        {weeks.map((week, wi) => (
+          <div className="heatmap-week" key={wi}>
+            {week.map((c, ci) =>
+              c ? (
+                <div key={ci} className="heatmap-cell" style={{ "--v": Math.max(0.07, c.value / max) } as any} title={`${fmtD(c.date)} — ${format(c.value)}`} />
+              ) : (
+                <div key={ci} className="heatmap-cell empty" />
+              ),
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

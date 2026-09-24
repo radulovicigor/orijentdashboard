@@ -206,6 +206,26 @@ unositi, samo ne brisati.
 
 ---
 
+## Dodatne metrike i "Obrasci" sekcija
+
+Skoro sve dodatne metrike (CAC, stopa napuštene korpe, stopa konverzije sajta,
+koncentracija prihoda, dani bez porudžbina, iskorišćenost budžeta, ROAS trend
+prva/druga polovina perioda, projekcija do kraja mjeseca) su **izvedene u
+`app/page.tsx` iz podataka koji se već čitaju** — nema novih poziva ka Meti,
+Shopify-ju ili Supabase-u za njih.
+
+Jedino `lib/shopify.ts` stvarno prikuplja nešto novo: `daily[].newCustomers/
+returningCustomers` (za grafik "Novi vs povratni kupci") i `hourly` (24 reda,
+za "Sat u danu kad se naručuje") — oboje se računaju iz istih porudžbina koje
+se već čitaju, samo se dodatno raspoređuju po satu/tipu kupca dok se prolazi
+kroz njih. `hourly` postoji samo za Shopify — Meta sync ne čuva satne podatke,
+pa "Sat u danu" nema Meta varijantu.
+
+`WeekdayChart` (Dan u sedmici) grupiše postojeći `chart` niz (spend + prihod
+po danu) po danu u sedmici — ista logika kao i za sve ostalo, samo drugi ključ
+grupisanja. `CalendarHeatmap` (u `components/ui.tsx`) je čist HTML/CSS grid
+bez JS-a — boja ćelije dolazi iz `--v` CSS varijable, radi kao server component.
+
 ## Šta bi sljedeće moglo
 
 - Piksel na orijent.me djelimično radi (šalje ViewContent, AddToCart i

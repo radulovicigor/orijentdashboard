@@ -74,6 +74,10 @@ function localDate(iso: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Podgorica", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 }
 
+function localHour(iso: string): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Podgorica", hour: "2-digit", hourCycle: "h23" }).format(new Date(iso)));
+}
+
 async function fetchOrders(since: string, until: string, maxPages: number) {
   // Shopify search: dates are interpreted in the shop's timezone
   const q = `created_at:>='${since}T00:00:00' AND created_at:<='${until}T23:59:59'`;
@@ -119,7 +123,8 @@ export async function getShopifyData(since: string, until: string, prev: { since
   const amount = (o: any) => parseFloat(o.currentTotalPriceSet?.shopMoney?.amount ?? "0") || 0;
   const currency = orders[0]?.currentTotalPriceSet?.shopMoney?.currencyCode ?? "EUR";
 
-  const dayMap = new Map(eachDay(since, until).map((d) => [d, { date: d, revenue: 0, orders: 0 }]));
+  const dayMap = new Map(eachDay(since, until).map((d) => [d, { date: d, revenue: 0, orders: 0, newCustomers: 0, returningCustomers: 0 }]));
+  const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, orders: 0, revenue: 0 }));
   const products = new Map<string, { title: string; units: number; revenue: number }>();
   const sources = new Map<string, { label: string; orders: number; revenue: number }>();
   let units = 0;
@@ -135,6 +140,11 @@ export async function getShopifyData(since: string, until: string, prev: { since
       day.revenue += total;
       day.orders += 1;
     }
+    const h = hourly[localHour(o.createdAt)];
+    if (h) {
+      h.orders += 1;
+      h.revenue += total;
+    }
     for (const li of o.lineItems?.nodes ?? []) {
       units += li.quantity;
       const p = products.get(li.title) ?? { title: li.title, units: 0, revenue: 0 };
@@ -143,8 +153,13 @@ export async function getShopifyData(since: string, until: string, prev: { since
       products.set(li.title, p);
     }
     if (o.customer) {
-      if (Number(o.customer.numberOfOrders) > 1) retC++;
-      else newC++;
+      if (Number(o.customer.numberOfOrders) > 1) {
+        retC++;
+        if (day) day.returningCustomers += 1;
+      } else {
+        newC++;
+        if (day) day.newCustomers += 1;
+      }
     }
     const j = o.customerJourneySummary;
     const srcParts = [
@@ -180,6 +195,7 @@ export async function getShopifyData(since: string, until: string, prev: { since
     metaOrders,
     metaRevenue,
     daily: [...dayMap.values()],
+    hourly,
     topProducts: [...products.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 10),
     sources: [...sources.values()].sort((a, b) => b.revenue - a.revenue),
     truncated: cur.truncated || prv.truncated,

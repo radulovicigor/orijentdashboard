@@ -161,8 +161,12 @@ export function demoShopify(since: string, until: string, meta: MetaData): Shopi
   const days = eachDay(since, until);
   const daily = days.map((date, i) => {
     const orders = Math.max(0, Math.round((meta.daily[i]?.purchases ?? 0) * 1.35 + r() * 3));
-    return { date, orders, revenue: orders * (40 + r() * 18) };
+    const returningCustomers = Math.round(orders * (0.2 + r() * 0.15));
+    return { date, orders, revenue: orders * (40 + r() * 18), newCustomers: orders - returningCustomers, returningCustomers };
   });
+  // Blaga dnevna šara: pauza noću, dva vrha (podne i veče), da "Sat u danu" izgleda uvjerljivo.
+  const hourShape = [0.1, 0.05, 0.05, 0.05, 0.05, 0.1, 0.3, 0.6, 1, 1.4, 1.7, 2, 2.4, 2.2, 1.8, 1.6, 1.7, 2, 2.6, 3, 2.8, 2, 1.2, 0.5];
+  const hourTotal = hourShape.reduce((a, b) => a + b, 0);
   const revenue = daily.reduce((a, d) => a + d.revenue, 0);
   const orders = daily.reduce((a, d) => a + d.orders, 0);
   const products = [
@@ -188,6 +192,7 @@ export function demoShopify(since: string, until: string, meta: MetaData): Shopi
     metaOrders,
     metaRevenue: revenue * 0.62,
     daily,
+    hourly: hourShape.map((w, hour) => ({ hour, orders: Math.round((orders * w) / hourTotal), revenue: Math.round((revenue * w) / hourTotal) })),
     topProducts: products.map(([title, f]) => ({ title, revenue: revenue * f, units: Math.round(orders * 1.3 * f) })),
     sources: [
       { label: "Meta (Facebook / Instagram)", orders: metaOrders, revenue: revenue * 0.62 },

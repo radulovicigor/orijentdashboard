@@ -155,7 +155,7 @@ export function CampaignSpendChart({ data }: { data: { date: string; spend: numb
   );
 }
 
-export function OrdersChart({ data }: { data: { date: string; orders: number }[] }) {
+export function OrdersChart({ data }: { data: { date: string; newCustomers: number; returningCustomers: number }[] }) {
   return (
     <div style={{ width: "100%", height: 196 }}>
       <ResponsiveContainer>
@@ -163,10 +163,65 @@ export function OrdersChart({ data }: { data: { date: string; orders: number }[]
           <CartesianGrid stroke={GRID} vertical={false} />
           <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={26} {...axis} />
           <YAxis allowDecimals={false} width={28} {...axis} />
-          <Tooltip {...tip} labelFormatter={(l) => shortDate(String(l))} formatter={(v: number) => [fmtNum(v), "Porudžbine"]} />
-          <Bar dataKey="orders" name="Porudžbine" fill={S1} radius={[3, 3, 0, 0]} maxBarSize={14} animationDuration={700} animationEasing="ease-out" />
+          <Tooltip {...tip} labelFormatter={(l) => shortDate(String(l))} formatter={(v: number, n: string) => [fmtNum(v), n]} />
+          <Legend {...legend} />
+          <Bar dataKey="newCustomers" name="Novi kupci" stackId="k" fill={S1} radius={[0, 0, 0, 0]} maxBarSize={14} animationDuration={700} animationEasing="ease-out" />
+          <Bar dataKey="returningCustomers" name="Povratni kupci" stackId="k" fill={S2} radius={[3, 3, 0, 0]} maxBarSize={14} animationDuration={700} animationEasing="ease-out" />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function HourlyOrdersChart({ data }: { data: { hour: number; orders: number }[] }) {
+  const fmtHour = (h: number) => `${h}h`;
+  return (
+    <div style={{ width: "100%", height: 196 }}>
+      <ResponsiveContainer>
+        <BarChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID} vertical={false} />
+          <XAxis dataKey="hour" tickFormatter={fmtHour} interval={1} {...axis} />
+          <YAxis allowDecimals={false} width={28} {...axis} />
+          <Tooltip {...tip} labelFormatter={(l) => fmtHour(Number(l))} formatter={(v: number) => [fmtNum(v), "Porudžbine"]} />
+          <Bar dataKey="orders" name="Porudžbine" fill={S1} radius={[3, 3, 0, 0]} maxBarSize={16} animationDuration={700} animationEasing="ease-out" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function WeekdayChart({ data, hasRevenue }: { data: { day: string; revenue: number; spend: number }[]; hasRevenue: boolean }) {
+  // Prihod i ulaganje su različitog reda veličine – isti princip kao RevenueSpendChart: dva grafika, zajednička osa dana.
+  return (
+    <div>
+      {hasRevenue && (
+        <>
+          <div className="chart-label rev">Prihod prodavnice</div>
+          <div style={{ width: "100%", height: 130 }}>
+            <ResponsiveContainer>
+              <BarChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }} syncId="dan-u-sedmici">
+                <CartesianGrid stroke={GRID} vertical={false} />
+                <XAxis dataKey="day" {...axis} hide />
+                <YAxis tickFormatter={fmtEur} width={68} {...axis} />
+                <Tooltip {...tip} formatter={(v: number, n: string) => [fmtEur(v), n]} />
+                <Bar dataKey="revenue" name="Prihod prodavnice" fill={S1} radius={[3, 3, 0, 0]} maxBarSize={28} animationDuration={700} animationEasing="ease-out" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+      <div className="chart-label spend" style={{ marginTop: hasRevenue ? 18 : 0 }}>Uloženo u reklame</div>
+      <div style={{ width: "100%", height: hasRevenue ? 130 : 220 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }} syncId="dan-u-sedmici">
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="day" {...axis} />
+            <YAxis tickFormatter={fmtEur} width={68} {...axis} />
+            <Tooltip {...tip} formatter={(v: number, n: string) => [fmtEur(v), n]} />
+            <Bar dataKey="spend" name="Uloženo u reklame" fill={S2} radius={[3, 3, 0, 0]} maxBarSize={28} animationDuration={700} animationEasing="ease-out" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

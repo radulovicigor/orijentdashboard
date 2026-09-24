@@ -250,6 +250,19 @@ tfoot td { border-top: 1px solid var(--line-2); border-bottom: 0; color: var(--g
   .camp-sub { order: 3; flex-basis: 100%; }
 }
 
+/* ---------- calendar heatmap ---------- */
+.heatmap { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
+.heatmap-dow, .heatmap-week { display: flex; gap: 4px; }
+.heatmap-dow span { flex: 1 1 0; text-align: center; font-size: 10px; color: var(--ink-3); }
+.heatmap-cell { flex: 1 1 0; aspect-ratio: 1; border-radius: 4px; background: rgba(173, 136, 56, var(--v, 0)); border: 1px solid var(--line); }
+.heatmap-cell.empty { background: transparent; border-color: transparent; }
+
+/* ---------- budget bar ---------- */
+.budget-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--ink-3); margin-top: 14px; }
+.budget-line b { color: var(--ink-2); font-weight: 600; }
+.budget-track { height: 4px; border-radius: 999px; background: rgba(238,226,206,.05); margin-top: 6px; overflow: hidden; }
+.budget-track > div { height: 100%; border-radius: 999px; background: var(--s2); animation: barGrow 700ms var(--ease-out) both; }
+
 /* ---------- glossary ---------- */
 .glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 40px; }
 .gl { padding: 16px 0; border-bottom: 1px solid var(--line); }

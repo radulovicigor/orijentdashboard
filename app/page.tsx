@@ -2,8 +2,11 @@ import Link from "next/link";
 import { loadDashboard } from "@/lib/data";
 import { MIN_DATE, RANGES, resolveRange } from "@/lib/range";
 import { dec, eur, eur0, num, pct, roas, safeDiv } from "@/lib/format";
-import { Bars, Metric, Panel, SectionHead, Status } from "@/components/ui";
-import { AgeGenderChart, CampaignSpendChart, OrdersChart, RevenueSpendChart, TrafficChart } from "@/components/Charts";
+import { Bars, CalendarHeatmap, Metric, Panel, SectionHead, Status } from "@/components/ui";
+import { AgeGenderChart, CampaignSpendChart, HourlyOrdersChart, OrdersChart, RevenueSpendChart, TrafficChart, WeekdayChart } from "@/components/Charts";
+
+const DOW_LABELS = ["Pon", "Uto", "Sri", "Čet", "Pet", "Sub", "Ned"];
+const dowIndex = (date: string) => (new Date(date + "T00:00:00Z").getUTCDay() + 6) % 7;
 
 export const revalidate = 900;
 
@@ -55,6 +58,45 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
     : [];
   const fMax = Math.max(1, ...funnel.map((f) => f.v));
 
+  const cac = s && t ? safeDiv(t.spend, s.newCustomers) : null;
+  const siteConv = t ? safeDiv(t.purchases * 100, t.landingPageViews) : null;
+  const cartAbandonRate = t && t.addToCart > 0 ? safeDiv((t.addToCart - t.purchases) * 100, t.addToCart) : null;
+  const top3Share = s && s.revenue ? safeDiv(s.topProducts.slice(0, 3).reduce((a, x) => a + x.revenue, 0) * 100, s.revenue) : null;
+  const zeroOrderDays = s ? s.daily.filter((x) => x.orders === 0).length : null;
+
+  // Dan u sedmici: isti "chart" niz (spend + prihod po danu) grupisan po danu u sedmici umjesto po datumu.
+  const weekdayMap = new Map(DOW_LABELS.map((day) => [day, { day, revenue: 0, spend: 0 }]));
+  for (const c of chart) {
+    const w = weekdayMap.get(DOW_LABELS[dowIndex(c.date)])!;
+    w.revenue += c.revenue ?? 0;
+    w.spend += c.spend;
+  }
+  const weekdayData = [...weekdayMap.values()];
+
+  // ROAS trend: prva polovina perioda naspram druge - da li se efikasnost poboljšava.
+  let roasTrendFoot: string | undefined;
+  if (chart.length >= 4) {
+    const half = Math.floor(chart.length / 2);
+    const sumPart = (from: number, to: number) => chart.slice(from, to).reduce((a, c) => ({ revenue: a.revenue + (c.revenue ?? 0), spend: a.spend + c.spend }), { revenue: 0, spend: 0 });
+    const h1 = sumPart(0, half);
+    const h2 = sumPart(half, chart.length);
+    const roas1 = h1.spend ? h1.revenue / h1.spend : null;
+    const roas2 = h2.spend ? h2.revenue / h2.spend : null;
+    if (roas1 != null && roas2 != null) {
+      const changePct = ((roas2 - roas1) / roas1) * 100;
+      roasTrendFoot = `${changePct >= 0 ? "▲" : "▼"} ${dec(Math.abs(changePct), 0)}% u drugoj polovini perioda`;
+    }
+  }
+
+  // Projekcija do kraja mjeseca - samo za "Ovaj mjesec".
+  let monthProjection: number | null = null;
+  if (range.key === "this_month" && s) {
+    const [y, mo] = range.since.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const daysElapsed = new Date(range.until + "T00:00:00Z").getUTCDate();
+    if (daysElapsed > 0) monthProjection = (s.revenue / daysElapsed) * daysInMonth;
+  }
+
   const fmtD = (x: string) => x.split("-").reverse().join(".") + ".";
   const fmtDS = (x: string) => {
     const [, mm, dd] = x.split("-");
@@ -98,6 +140,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
       {d.metaError && <div className="banner err">Meta reklame: {d.metaError}</div>}
       {d.shopifyError && <div className="banner err">Prodavnica (Shopify): {d.shopifyError}</div>}
       {s?.truncated && <div className="banner">Period ima mnogo porudžbina, prikazan je dio. Izaberite kraći period za tačne brojke.</div>}
+      {monthProjection != null && <div className="banner">Na ovom tempu, do kraja mjeseca: ~{eur(monthProjection)} prihoda.</div>}
 
       <section>
         <SectionHead eyebrow="Pregled" title="Koliko je uloženo i šta se vratilo" sub="Prodaja dolazi iz Shopify prodavnice, ulaganje iz Meta reklama." />
@@ -106,11 +149,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
             {s && <Metric accent label="Prihod prodavnice" value={eur(s.revenue)} cur={s.revenue} prev={pv(s.prevRevenue)} hint="Vrijednost svih porudžbina, bez otkazanih." />}
             {s && <Metric label="Porudžbine" value={num(s.orders)} cur={s.orders} prev={pv(s.prevOrders)} />}
             {t && <Metric label="Uloženo u reklame" value={eur(t.spend)} cur={t.spend} prev={pv(p?.spend)} hint="Ukupan trošak Meta reklama (Facebook i Instagram)." />}
-            {s && t && <Metric accent label="Ukupni ROAS" value={roas(blendedRoas)} hint="Prihod prodavnice podijeljen sa ulaganjem u reklame. 4× znači 4 € prihoda na svaki uloženi euro." />}
+            {s && t && <Metric accent label="Ukupni ROAS" value={roas(blendedRoas)} foot={roasTrendFoot} hint="Prihod prodavnice podijeljen sa ulaganjem u reklame. 4× znači 4 € prihoda na svaki uloženi euro." />}
           </div>
           <div className="metrics">
             {s && <Metric label="Prosječna korpa" value={eur(aov)} hint="Prosječna vrijednost jedne porudžbine." />}
             {s && <Metric label="Prodato komada" value={num(s.unitsSold)} foot={`${num(s.newCustomers)} novih · ${num(s.returningCustomers)} povratnih kupaca`} />}
+            {s && t && <Metric label="Cijena po novom kupcu" value={eur(cac)} hint="Uloženo u reklame podijeljeno samo sa brojem novih kupaca, ne svih porudžbina." />}
             {s && (
               <Metric
                 label="Prodaja sa Meta reklama"
@@ -130,6 +174,31 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
         )}
       </section>
 
+      {m && (
+        <section>
+          <SectionHead eyebrow="Obrasci" title="Kad radi marketing" sub="Isti novac, raspoređen po danu u sedmici, satu i kalendaru — da se vidi kad je najbolje ulagati." />
+          <div className="grid two">
+            <Panel title="Dan u sedmici">
+              <WeekdayChart data={weekdayData} hasRevenue={!!s} />
+            </Panel>
+            {s ? (
+              <Panel title="Sat u danu kad se naručuje" note="samo prodavnica">
+                <HourlyOrdersChart data={s.hourly} />
+              </Panel>
+            ) : (
+              <Panel title="Kalendar ulaganja u reklame" note="tamnije = jači dan">
+                <CalendarHeatmap data={chart.map((c) => ({ date: c.date, value: c.spend }))} format={eur} />
+              </Panel>
+            )}
+          </div>
+          {s && (
+            <Panel title="Kalendar prihoda" note="tamnije = jači dan" style={{ marginTop: 14 }}>
+              <CalendarHeatmap data={chart.map((c) => ({ date: c.date, value: c.revenue ?? 0 }))} format={eur} />
+            </Panel>
+          )}
+        </section>
+      )}
+
       {m && t && (
         <section>
           <SectionHead eyebrow="Meta reklame" title="Facebook i Instagram" sub="Koliko ljudi je vidjelo reklame, koliko ih je kliknulo i stiglo na sajt." />
@@ -147,6 +216,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
               {pixelHasSales && <Metric label="Vrijednost kupovina" value={eur(t.purchaseValue)} />}
               {pixelHasSales && <Metric label="Cijena po kupovini" value={eur(safeDiv(t.spend, t.purchases))} />}
               {pixelHasSales && <Metric label="ROAS (Meta)" value={roas(metaRoas)} />}
+              {pixelHasSales && <Metric label="Stopa konverzije sajta" value={pct(siteConv, 2)} hint="Procenat posjetilaca sajta koji na kraju kupe." />}
+              {pixelHasSales && <Metric label="Stopa napuštene korpe" value={pct(cartAbandonRate, 0)} hint="Procenat ljudi koji dodaju proizvod u korpu, ali ne završe kupovinu." />}
             </div>
           </div>
 
@@ -264,36 +335,54 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
                 <span className="note">klikni za više</span>
               </div>
               <div className="camp-list">
-                {m.campaigns.map((c) => (
-                  <details className="camp" key={c.id}>
-                    <summary>
-                      <span className="camp-name">{c.name}</span>
-                      <span className="camp-sub">
-                        <Status s={c.status} />
-                        <span className="sep">·</span>
-                        <span>{c.objective}</span>
-                      </span>
-                      <span className="camp-spend num">{eur(c.spend)}</span>
-                    </summary>
-                    <div className="camp-body">
-                      <div className="camp-chart">
-                        <div className="chart-label spend">Uloženo po danu</div>
-                        <CampaignSpendChart data={c.daily} />
-                      </div>
-                      <div className="camp-ads">
-                        <div className="bars-title" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
-                          Reklame u kampanji
+                {m.campaigns.map((c) => {
+                  const activeDays = Math.round((new Date(c.lastDate + "T00:00:00Z").getTime() - new Date(c.firstDate + "T00:00:00Z").getTime()) / 86400000) + 1;
+                  const avgDailySpend = c.spend / Math.max(1, activeDays);
+                  const budgetUtil = c.dailyBudget ? Math.min(100, (avgDailySpend / c.dailyBudget) * 100) : null;
+                  return (
+                    <details className="camp" key={c.id}>
+                      <summary>
+                        <span className="camp-name">{c.name}</span>
+                        <span className="camp-sub">
+                          <Status s={c.status} />
+                          <span className="sep">·</span>
+                          <span>{c.objective}</span>
+                        </span>
+                        <span className="camp-spend num">{eur(c.spend)}</span>
+                      </summary>
+                      <div className="camp-body">
+                        <div className="camp-chart">
+                          <div className="chart-label spend">Uloženo po danu</div>
+                          <CampaignSpendChart data={c.daily} />
+                          {budgetUtil != null && (
+                            <>
+                              <div className="budget-line">
+                                <span>Iskorišćenost dnevnog budžeta</span>
+                                <b>
+                                  {pct(budgetUtil, 0)} od {eur0(c.dailyBudget)}/dan
+                                </b>
+                              </div>
+                              <div className="budget-track">
+                                <div style={{ width: `${Math.max(2, budgetUtil)}%` }} />
+                              </div>
+                            </>
+                          )}
                         </div>
-                        <Bars
-                          rows={c.ads.map((a) => ({ ...a, label: a.name }))}
-                          value={(r) => r.spend}
-                          format={eur}
-                          sub={(r) => `${num(r.impressions)} impresija · ${pct(safeDiv(r.linkClicks * 100, r.impressions))} CTR`}
-                        />
+                        <div className="camp-ads">
+                          <div className="bars-title" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
+                            Reklame u kampanji
+                          </div>
+                          <Bars
+                            rows={c.ads.map((a) => ({ ...a, label: a.name }))}
+                            value={(r) => r.spend}
+                            format={eur}
+                            sub={(r) => `${num(r.impressions)} impresija · ${pct(safeDiv(r.linkClicks * 100, r.impressions))} CTR`}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </details>
-                ))}
+                    </details>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -371,6 +460,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
             <div className="panel">
               <div className="panel-head">
                 <h3>Najprodavaniji parfemi</h3>
+                {top3Share != null && <span className="note">top 3 = {pct(top3Share, 0)} prihoda</span>}
               </div>
               <div className="table-wrap" style={{ marginTop: 14 }}>
                 <table>
@@ -404,9 +494,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
             </div>
             <div>
               <Panel title="Odakle dolaze kupci" note="prihod">
-                <Bars rows={s.sources} value={(r) => r.revenue} format={eur} sub={(r) => `${num(r.orders)} porudžbina`} />
+                <Bars rows={s.sources} value={(r) => r.revenue} format={eur} sub={(r) => `${num(r.orders)} porudžbina · ${eur(safeDiv(r.revenue, r.orders))} prosjek`} />
               </Panel>
-              <Panel title="Porudžbine po danu">
+              <Panel title="Porudžbine po danu" note={zeroOrderDays ? `${zeroOrderDays} dana bez porudžbina` : undefined}>
                 <OrdersChart data={s.daily} />
               </Panel>
             </div>
@@ -440,6 +530,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
           <div className="gl">
             <b>Posjete sajtu</b>
             <span>Koliko puta se sajt zaista učitao nakon klika na reklamu.</span>
+          </div>
+          <div className="gl">
+            <b>Cijena po novom kupcu</b>
+            <span>Uloženo u reklame podijeljeno samo sa brojem kupaca koji kupuju prvi put — koliko košta dovesti nekog novog.</span>
+          </div>
+          <div className="gl">
+            <b>Stopa napuštene korpe</b>
+            <span>Procenat ljudi koji stave proizvod u korpu, a onda ipak ne kupe.</span>
+          </div>
+          <div className="gl">
+            <b>Stopa konverzije sajta</b>
+            <span>Od svih koji posjete sajt, koliki procenat na kraju i kupi.</span>
           </div>
         </div>
       </section>

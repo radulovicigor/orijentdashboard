@@ -34,41 +34,53 @@ ne može uvijek da dohvati fontove i pada.
 
 Ovo je najvažniji dio za razumjeti — nije standardna postavka.
 
-### Meta reklame → uživo sa Graph API-ja
+### Meta reklame → preko Supabase, ne direktno
 
-Klijent je verifikovao Meta nalog i napravio System User token (od 20.9.2026).
-`lib/meta.ts` zove Graph API direktno, bez posrednika:
+Klijent **nema** radan Meta API token. Kratko (20-24.9.2026) je postojao
+direktan Graph API pristup preko System User tokena (`ads_read`, bez isteka),
+ali je Meta blokirala pristup tražeći ličnu verifikaciju identiteta
+("API access blocked", OAuthException code 200), a SMS kod za tu verifikaciju
+**Meta ne isporučuje na crnogorske brojeve** — ni klijentu ni drugom
+adminu na Business Manager nalogu. Nema alternative (poziv, WhatsApp, ID
+upload) ponuđene na tom ekranu. Ćorsokak dok Meta to ne popravi na svojoj
+strani; ne gubiti vrijeme ponovo na to bez novog signala od klijenta.
 
-- `META_ACCESS_TOKEN` — System User token, scope `ads_read`, **bez isteka**
-  (`expires_at: 0`, `data_access_expires_at: 0` — provjereno preko `/debug_token`).
-- `META_AD_ACCOUNT_ID` = `976499834476142`, `META_API_VERSION` = `v23.0`.
-- Dnevni redovi (`level=account|campaign|ad`, `time_increment=1`) za spend/
-  impresije/klikove/akcije (link click, landing page view, add to cart,
-  initiate checkout, purchase) — sabiraju se po danu, isto kao ranije.
-- `reach`/`frequency` se čitaju **posebnim pozivom bez `time_increment`** za
-  tačno traženi period — Graph API vraća pravi jedinstveni doseg za bilo koji
-  opseg, pa je `reachKnown` sad uvijek `true` (nema više "poklapanja sa
-  snimkom" — to je bio Supabase problem, direktan API ga nema).
-- Breakdown-ovi (starost/pol, platforma+pozicija, grad) se čitaju uživo preko
-  `breakdowns=` parametra za tačno izabrani period — `breakdownPeriod` je
-  uvijek isti kao `since`/`until` iz filtera, ne kasni za njim.
-- `objective`/`status`/`daily_budget` dolaze sa `/campaigns` i `/ads`
-  endpoint-a (nisu dio insights-a). **`daily_budget` je u centima** — dijeli
-  se sa 100.
-- "Rezultati" po kampanji: `OBJECTIVE_RESULT` mapira cilj kampanje (npr.
-  `OUTCOME_SALES`) na odgovarajuću metriku (purchases/landingPageViews/
-  linkClicks). Za `OUTCOME_AWARENESS`/`BRAND_AWARENESS`/`REACH` ostaje `—`
-  (dnevni doseg se i dalje ne može sabirati kroz kampanju na ovaj način).
-- **Pažnja na `previousRange()`**: kad prethodnog perioda nema, vraća
-  sentinel `"2000-01-01"`. Taj datum se **nikad** ne šalje Meti (Graph API
-  baca grešku #3018 — opseg stariji od ~37 mjeseci); `fetchSince` u
-  `lib/meta.ts` to eksplicitno provjerava protiv `MIN_DATE`.
+Zato:
 
-Supabase (`czdtlmimtilvvtsytqpx`, tabele `meta_daily`/`meta_snapshot`) i
-zakazani dnevni sync preko Meta Ads MCP konektora **više se ne koriste** za
-ovaj izvještaj — to je bio privremeni zaobilazni put dok klijent nije imao
-token. Sync zadatak se može ugasiti (provjeri kod korisnika da li postoji
-i da li je vezan za nešto drugo prije brisanja).
+1. Zakazani zadatak jednom dnevno (~06:00-06:20 po Podgorici, provjereno
+   preko `meta_snapshot.sync.last_sync`) čita Meta Ads podatke preko Meta
+   Ads MCP konektora (`mcp__c7...__ads_*` alati) — to je odvojena
+   autentikacija od developer app/System User tokena i **nije pogođena**
+   blokom identiteta (provjereno: `ads_get_ad_accounts` i dalje vidi
+   `Orijent`, `act_976499834476142`, `is_queryable: true`). Taj sync ne
+   živi u ovoj Claude Code sesiji (`list_scheduled_tasks` ovdje ga ne vidi),
+   pa ga ne restartovati/brisati odavde bez provjere kod korisnika.
+2. Upisuje ih u Supabase, projekat `czdtlmimtilvvtsytqpx`:
+   - `public.meta_daily` — jedan red po (kind, date, entity_id);
+     `kind` je `account` | `campaign` | `ad`. PK je (kind, date, entity_id).
+   - `public.meta_snapshot` — `key` + `data jsonb`; drži breakdown-ove
+     (starost/pol, platforme, pozicije, gradovi) i `reach` za konkretan period.
+3. `lib/meta.ts` čita iz Supabase preko PostgREST-a, sa headerom
+   `apikey: <publishable key>`. RLS je uključen, anon ima samo SELECT.
+
+Posljedica: `lib/meta.ts` **nikad ne zove Metu.** Ako treba svježiji podatak,
+mijenja se sync, ne app.
+
+`reach` se ne može sabirati po danima (isti ljudi se ponavljaju). Zato se uzima
+iz snapshot-a samo kad se `since`/`until` tačno poklapaju sa snimljenim periodom —
+`m.reachKnown` govori da li smije da se prikaže. Ako ne, prikazuje se `—`.
+
+`MetaCampaign` ima i `daily` (dnevna potrošnja te kampanje) i `ads` (sve
+reklame te kampanje, ne samo top 12) — koristi ih "Detalji po kampanji" na
+stranici. Oboje se izvode iz istih `meta_daily` redova koje `loadRows()` već
+čita (grupisano po `entity_id`/`parent_name`), nema dodatnih poziva.
+
+**Direktan Graph API kod (`META_ACCESS_TOKEN`/`META_AD_ACCOUNT_ID`/
+`META_API_VERSION`, `daily_budget` u centima, `OBJECTIVE_RESULT` mapiranje)
+postoji u git istoriji** (commit `49f443e` i `6632fc9` prije revert-a) — ako
+klijent ikad riješi verifikaciju, taj kod se može vratiti umjesto ponovnog
+pisanja. Env varijable su i dalje na Vercelu (nekorišćene, bezopasno ih
+ostaviti).
 
 ### Shopify → uživo
 
@@ -141,7 +153,7 @@ components/
   Charts.tsx          RevenueSpendChart, TrafficChart, AgeGenderChart, OrdersChart
 lib/
   range.ts            opsezi datuma + MIN_DATE
-  meta.ts             Graph API uživo + labele (objective, rezultat, platforma, grad)
+  meta.ts             čitanje iz Supabase + labele (objective, rezultat, platforma, grad)
   shopify.ts          Admin GraphQL, agregacije po danu/proizvodu/izvoru
   data.ts             loadDashboard() — spaja oba izvora
   format.ts           eur, num, pct, dec, roas, safeDiv
@@ -199,7 +211,9 @@ unositi, samo ne brisati.
 - Piksel na orijent.me djelimično radi (šalje ViewContent, AddToCart i
   Purchase se povremeno vide — provjeri da li je stabilno prije nego što
   `pixelHasSales` postane trajno pouzdan signal).
-- Ugasiti stari dnevni sync zadatak (Meta Ads MCP → Supabase) ako i dalje
-  postoji — više ništa ne čita iz `meta_daily`/`meta_snapshot`.
+- Meta traži ličnu verifikaciju identiteta za direktan Graph API pristup, a
+  SMS kod ne stiže na crnogorske brojeve (ni klijentu ni drugom adminu, bez
+  ponuđene alternative). Dok se to ne riješi na Meta strani, ostati na
+  Supabase sync-u — ne dirati dnevni zadatak, on radi dobro.
 - Trajno povezati Vercel projekat na GitHub repo (Project Settings → Git) da
   svaki `git push` sam pokrene deploy, bez ručnog `create_deployment` poziva.
